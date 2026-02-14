@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroTriage - AI Emergency System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white font-sans h-screen overflow-hidden">
+
+    <nav class="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-heart-pulse text-red-500 text-2xl"></i>
+            <h1 class="text-xl font-bold tracking-wider">NEURO<span class="text-blue-400">TRIAGE</span></h1>
+        </div>
+        <div class="text-sm text-slate-400">
+            <span class="bg-green-500/10 text-green-400 px-3 py-1 rounded-full text-xs border border-green-500/20">
+                ● System Online
+            </span>
+        </div>
+    </nav>
+
+    <div class="flex h-[calc(100vh-64px)]">
+
+        <div class="w-1/3 bg-slate-800 p-6 border-r border-slate-700 overflow-y-auto">
+            <h2 class="text-lg font-semibold mb-4 text-blue-300">Patient Entry</h2>
+
+            <div class="mb-6 p-4 bg-slate-700/50 rounded-lg border border-dashed border-slate-600 text-center hover:border-blue-400 transition cursor-pointer" onclick="document.getElementById('docUpload').click()">
+                <i class="fa-solid fa-cloud-arrow-up text-2xl mb-2 text-slate-400"></i>
+                <p class="text-sm text-slate-300">Upload Medical Report (PDF/Img)</p>
+                <input type="file" id="docUpload" class="hidden" onchange="uploadDoc()">
+            </div>
+
+            <form id="triageForm" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="number" id="age" placeholder="Age" class="bg-slate-700 p-3 rounded border border-slate-600 focus:border-blue-500 outline-none" required>
+                    <select id="gender" class="bg-slate-700 p-3 rounded border border-slate-600 outline-none">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="number" id="sys_bp" placeholder="Sys BP (e.g. 120)" class="bg-slate-700 p-3 rounded border border-slate-600 outline-none" required>
+                    <input type="number" id="dia_bp" placeholder="Dia BP (e.g. 80)" class="bg-slate-700 p-3 rounded border border-slate-600 outline-none" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="number" id="hr" placeholder="Heart Rate" class="bg-slate-700 p-3 rounded border border-slate-600 outline-none" required>
+                    <input type="number" id="temp" placeholder="Temp (°F)" step="0.1" class="bg-slate-700 p-3 rounded border border-slate-600 outline-none" required>
+                </div>
+
+                <div class="relative">
+                    <input type="text" id="symptoms" placeholder="Symptoms (e.g. Chest Pain)" class="w-full bg-slate-700 p-3 rounded border border-slate-600 outline-none pr-12" required>
+                    <button type="button" onclick="startVoice()" class="absolute right-2 top-2 text-slate-400 hover:text-red-400 transition">
+                        <i class="fa-solid fa-microphone"></i>
+                    </button>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded font-bold transition shadow-lg shadow-blue-500/20">
+                    ADMIT PATIENT
+                </button>
+            </form>
+        </div>
+
+        <div class="w-2/3 bg-slate-900 p-6 relative">
+            <h2 class="text-lg font-semibold mb-4 text-slate-300 flex justify-between">
+                Live Triage Queue
+                <span class="text-xs font-normal text-slate-500">Auto-prioritized by AI</span>
+            </h2>
+
+            <div id="queue" class="space-y-3">
+                </div>
+
+            <div id="aiModal" class="hidden absolute bottom-6 right-6 w-80 bg-slate-800 p-4 rounded-lg shadow-2xl border border-blue-500/30">
+                <h3 class="text-sm font-bold text-blue-400 mb-2"><i class="fa-solid fa-robot"></i> Gemini Analysis</h3>
+                <p id="aiText" class="text-xs text-slate-300 leading-relaxed">Analyzing...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        // 1. Handle Form Submit
+        document.getElementById('triageForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('age', document.getElementById('age').value);
+            formData.append('gender', document.getElementById('gender').value);
+            formData.append('sys_bp', document.getElementById('sys_bp').value);
+            formData.append('dia_bp', document.getElementById('dia_bp').value);
+            formData.append('hr', document.getElementById('hr').value);
+            formData.append('temp', document.getElementById('temp').value);
+            formData.append('symptoms', document.getElementById('symptoms').value);
+
+            // Call Backend
+            const response = await fetch(`${API_URL}/predict_risk`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            addPatientToQueue(data.risk, document.getElementById('symptoms').value);
+        });
+
+        // 2. Add to Queue Logic
+        function addPatientToQueue(risk, symptoms) {
+            const queue = document.getElementById('queue');
+            const card = document.createElement('div');
+
+            let colorClass = "border-l-4 border-green-500 bg-slate-800";
+            if(risk === "Medium") colorClass = "border-l-4 border-yellow-500 bg-slate-800";
+            if(risk === "High") colorClass = "border-l-4 border-red-500 bg-red-900/10 animate-pulse";
+
+            card.className = `p-4 rounded shadow-md flex justify-between items-center ${colorClass} transition-all transform hover:scale-[1.01]`;
+            card.innerHTML = `
+                <div>
+                    <span class="text-xs font-bold uppercase tracking-wider ${risk === 'High' ? 'text-red-400' : 'text-slate-400'}">${risk} RISK</span>
+                    <h3 class="font-bold text-lg">${symptoms}</h3>
+                    <p class="text-xs text-slate-500">ID: #${Math.floor(Math.random()*9000)+1000}</p>
+                </div>
+                <button onclick="askGemini('${risk}', '${symptoms}')" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-blue-300 border border-slate-600">
+                    Why?
+                </button>
+            `;
+
+            // High Risk goes to TOP
+            if(risk === "High") queue.prepend(card);
+            else queue.appendChild(card);
+        }
+
+        // 3. Document Upload (Gemini Vision)
+        async function uploadDoc() {
+            const file = document.getElementById('docUpload').files[0];
+            if(!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            alert("Uploading to Gemini... Please wait.");
+            const response = await fetch(`${API_URL}/analyze_document`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            // Auto-fill form
+            document.getElementById('age').value = data.age || 0;
+            document.getElementById('sys_bp').value = data.systolic_bp || 120;
+            document.getElementById('dia_bp').value = data.diastolic_bp || 80;
+            document.getElementById('hr').value = data.heart_rate || 72;
+            document.getElementById('symptoms').value = data.symptoms || "Unknown";
+        }
+
+        // 4. Voice Input (Web Speech API)
+        function startVoice() {
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'ta-IN'; // Tamil Mode
+            recognition.start();
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                document.getElementById('symptoms').value = text + " (Translated)";
+            };
+        }
+
+        // 5. Ask Gemini "Why?"
+        async function askGemini(risk, symptoms) {
+            const modal = document.getElementById('aiModal');
+            const text = document.getElementById('aiText');
+            modal.classList.remove('hidden');
+            text.innerText = "Consulting AI...";
+
+            const response = await fetch(`${API_URL}/explain`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({risk: risk, symptoms: symptoms})
+            });
+            const data = await response.json();
+            text.innerText = data.explanation;
+        }
+    </script>
+</body>
+</html>
