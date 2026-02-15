@@ -1,11 +1,16 @@
 fastapi
 uvicorn
-transformers
-torch
-scikit-learn
-sentence-transformers
-faiss-cpu
-pandas
-numpy
+python-dotenv
+requests
+pydantic
 sqlalchemy
-
+groq
+sentence-transformers
+numpy
+pandas
+scikit-learn
+joblib
+faiss-cpu
+# torch is usually installed via sentence-transformers, but explicit is safer
+torch
+transformers
